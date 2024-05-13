@@ -1,0 +1,43 @@
+#Author: Dharani Kumari Nagali
+#Student Id: 23870369
+
+#!/usr/bin/env bash
+
+#Check if three files are provided as input
+if [ "$#" -ne 3 ]; then
+   echo "Usage: $0 <file1.tsv> <file2.tsv> <file3.tsv>"
+   exit 1
+fi
+
+#Function remove_continent_column() is used to drop the continent column
+remove_continent_column() {
+    awk 'BEGIN { FS = "\t"; OFS = "\t" } { NF--; print }'
+}
+
+# Function to filter rows based on year and country code
+filter_rows() {
+    local min_year=2011
+    local max_year=2021
+    awk -v min="$min_year" -v max="$max_year" -F "\t" '$3 >= min && $3 <= max && $2 != ""'
+}
+
+# Iterating over the files passed in the command line
+for file in "$@"; 
+do
+    #Storing the header of each file in a variable
+    header=$(head -n 1 "$file")
+    #Comparing the header of the file with Homicide columns
+    if [[ "$header" == $'Entity\tCode\tYear\t'*'Homicide rate per 100,000 population - Both sexes - All ages'* ]]; 
+    then
+        filter_rows < "$file" | sort -k2,2 -k3,3n > "homicide.tsv"
+    
+    #Comparing the header of the file with GDP columns
+    elif [[ "$header" == $'Entity\tCode\tYear\tCantril ladder score\t\"GDP per capita, PPP (constant 2017 international $)\"\tPopulation (historical estimates)\tContinent' ]]; 
+    then
+        remove_continent_column < "$file" | filter_rows | sort -k2,2 -k3,3n > "gdp.tsv"
+    #Comparing the header of the file with Life columns
+    elif [[ "$header" == $'Entity\tCode\tYear\tLife expectancy - Sex: all - Age: at birth - Variant: estimates\tCantril ladder score\tPopulation (historical estimates)\tContinent' ]];
+    then 
+        remove_continent_column < "$file" | filter_rows | sort -k2,2 -k3,3n > "life.tsv"
+    fi
+done

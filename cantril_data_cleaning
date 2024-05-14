@@ -41,3 +41,23 @@ do
         remove_continent_column < "$file" | filter_rows | sort -k2,2 -k3,3n > "life.tsv"
     fi
 done
+
+# Output file
+output_file="merged_file.tsv"
+
+#Storing header columns in the output file
+echo $'Entity/Country\tCode\tYear\tGDP per capita\tPopulation\tHomicide Rate\tLife Expectancy\tCantril Ladder score' > $output_file
+
+# Remove extra spaces, ensure Unix line endings, and prepare files by concatenating key fields and sorting
+awk -F'\t' -v OFS='\t' '{gsub(/\r/, ""); print $2 "-" $3, $0}' "homicide.tsv" | sort -k1,1 > temp_homicide.tsv
+awk -F'\t' -v OFS='\t' '{gsub(/\r/, ""); print $2 "-" $3, $0}' "gdp.tsv" | sort -k1,1 > temp_gdp.tsv
+awk -F'\t' -v OFS='\t' '{gsub(/\r/, ""); print $2 "-" $3, $0}' "life.tsv" | sort -k1,1 > temp_life.tsv 
+
+
+# Perform the first join on the key between  cleaned Homicide and GDP  files
+join -t $'\t' -j 1 -o '0,1.2,1.3,1.4,1.5,2.5,2.6,2.7' temp_homicide.tsv temp_gdp.tsv > temp_join1.tsv
+# Perform the second join on the key between the first join result and cleaned life expectancy file
+join -t $'\t' -j 1 -o '1.2,1.3,1.4,1.7,1.8,1.5,2.5,1.6' temp_join1.tsv temp_life.tsv >> $output_file
+
+#Removing the temporary files created throught out the program
+rm temp_homicide.tsv temp_gdp.tsv temp_join1.tsv temp_life.tsv homicide.tsv gdp.tsv life.tsv;

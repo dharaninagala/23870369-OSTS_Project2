@@ -1,0 +1,120 @@
+#!/bin/bash
+
+file="$1"  
+
+
+# using awk to check whether the file is tab seprated or not 
+awk -F'\t' 'NR==1 {
+    if (NF > 1) 
+    {
+        exit 0;  
+    } else 
+    {
+        exit 1;  
+    }
+}' "$file"
+
+if [ $? -ne 0 ]; 
+then
+    echo "The input file $1 is not a tsv file";
+    exit 1;
+fi
+
+
+
+# Use awk to clean data, check conditions, calculate sums, count valid entries, and calculate correlations
+awk -F'\t' '
+BEGIN { OFS="\t" }
+NR>1 {
+    #Clean numbers: remove non-numeric characters except for decimal point and minus
+    gsub(/[^0-9.-]/, "", $4);  # GDP
+    gsub(/[^0-9.-]/, "", $5);  # Population
+    gsub(/[^0-9.-]/, "", $6);  # Homicide Rate
+    gsub(/[^0-9.-]/, "", $7);  # Life Expectancy
+    gsub(/[^0-9.-]/, "", $8);  # Cantril Ladder Score
+
+    country = $1;
+    cantril = $8;
+
+    # Process each variable if present with Cantril
+    process_data(country, cantril, $4, "GDP");
+    process_data(country, cantril, $5, "Population");
+    process_data(country, cantril, $6, "Homicide");
+    process_data(country, cantril, $7, "Life_Expectancy");
+}
+END {
+    # Output mean correlations, ensuring at least 3 entries per country for each variable
+    output_mean_correlation("Homicide");
+    output_mean_correlation("GDP");
+    output_mean_correlation("Population");
+    output_mean_correlation("Life_Expectancy");
+}
+
+function process_data(country, cantril, value, type)
+{
+    if (cantril != "" && value != "") 
+    {
+        var_prefix = type "_";
+        sum[country, var_prefix "cantril"] += cantril;
+        sum[country, var_prefix "value"] += value;
+        sum_product[country, var_prefix "product"] += cantril * value;
+        sum_sq[country, var_prefix "cantril_sq"] += cantril * cantril;
+        sum_sq[country, var_prefix "value_sq"] += value * value;
+        count[country, type]++;
+    }
+    
+}
+
+function output_mean_correlation(type) 
+{
+    total_corr = num_countries = 0;
+    for (key in count) 
+    {
+        # Split the key into country and variable type
+        split(key, parts, SUBSEP);  
+        country = parts[1];
+        variable_type = parts[2];
+        if (variable_type == type && count[country, type] >= 3) 
+        {
+            var_prefix = type "_";
+            r = calculate_correlation(sum[country, var_prefix "cantril"], sum[country, var_prefix "value"], sum_product[country, var_prefix "product"], sum_sq[country, var_prefix "cantril_sq"], sum_sq[country, var_prefix "value_sq"], count[country, type]);
+            total_corr += r;
+            num_countries++;
+        }
+    }
+    # Output the mean correlation formatted to three decimal places
+    if (num_countries > 0) 
+    {
+        mean_corr = total_corr / num_countries;
+        if (mean_corr == 0)
+        {
+            printf "Correlation of %s with Cantril ladder is undefined or zero due to lack of data variance.\n", type;
+        }
+        else
+        {
+            printf "Mean correlation of %s with Cantril ladder is %.3f\n", type, mean_corr;
+        }
+    } 
+    else 
+    {
+        printf "Mean correlation of %s with Cantril ladder is not available due to insufficient data\n", type;
+    }
+}
+
+
+# calculate_correlation function is used to calculate correlation between 2 values
+function calculate_correlation(x_sum, y_sum, xy_sum, x2_sum, y2_sum, n) 
+{
+    numerator = ((n * xy_sum)- (x_sum * y_sum));
+    denominator = sqrt(((n * x2_sum) - (x_sum^2)) * ((n * y2_sum) - (y_sum^2)));
+    if (denominator == 0) 
+    {
+        return 0; 
+    }
+    return numerator/denominator;
+}' "$file"
+
+
+
+
+

@@ -9,21 +9,73 @@ if [ "$#" -ne 3 ]; then
    exit 1
 fi
 
-#Function remove_continent_column() is used to drop the continent column
-remove_continent_column() {
-    awk 'BEGIN { FS = "\t"; OFS = "\t" } { NF--; print }'
+#Function to check whether given file is a tsv file or not
+check_tsv_file()
+{
+    local file="$1";
+    awk -F'\t' 'NR==1 {
+    if (NF > 1) 
+    {
+        exit 0;  
+    } else 
+    {
+        exit 1;  
+    }
+    }' "$file"
+
+    if [ $? -ne 0 ]; 
+    then
+        echo "The input file $file is not a tsv file";
+        exit 1;
+    fi
+}
+
+#Function to remove continent column in the file 
+remove_continent_column() 
+{
+    local file="$1"
+    awk 'BEGIN { FS = "\t"; OFS = "\t" } { NF--; print }' "$file";
 }
 
 # Function to filter rows based on year and country code
 filter_rows() {
     local min_year=2011
     local max_year=2021
-    awk -v min="$min_year" -v max="$max_year" -F "\t" '$3 >= min && $3 <= max && $2 != ""'
+    awk -v min="$min_year" -v max="$max_year" -F "\t" '$3 >= min && $3 <= max && $2 != ""';
 }
+ 
+
+# Function remove_inconsistent_lines() is used to ignore the rows that doesn't match with header count
+remove_inconsistent_lines() {
+    local file="$1"
+    local clean_file="clean_$file"
+    head -n 1 "$file" > "$clean_file"
+
+    # Read the number of fields expected from the header
+    local num_fields=$(head -n 1 "$file" | awk -F '\t' '{print NF}')
+    # Check each subsequent line to ensure it has the correct number of fields
+    # Report errors to stderr and do not print lines with incorrect field count
+    awk -F '\t' -v num_fields="$num_fields" 'NR > 1 {
+        if (NF != num_fields)
+        {
+            print "Error: Line " NR " in file '"$file"' has a different number of cells than the header" > "/dev/null"
+        }
+        else 
+        {
+            print $0 >> "'"$clean_file"'" 
+        }
+    }' "$file"
+    if [ -s "$clean_file" ]; then  # Check if clean file has size greater than zero
+        mv "$clean_file" "$file"
+    fi
+}
+
 
 # Iterating over the files passed in the command line
 for file in "$@"; 
 do
+    check_tsv_file "$file";
+    remove_inconsistent_lines "$file";
     #Storing the header of each file in a variable
     header=$(head -n 1 "$file")
     #Comparing the header of the file with Homicide columns
@@ -34,11 +86,11 @@ do
     #Comparing the header of the file with GDP columns
     elif [[ "$header" == $'Entity\tCode\tYear\tCantril ladder score\t\"GDP per capita, PPP (constant 2017 international $)\"\tPopulation (historical estimates)\tContinent' ]]; 
     then
-        remove_continent_column < "$file" | filter_rows | sort -k2,2 -k3,3n > "gdp.tsv"
+        remove_continent_column "$file" | filter_rows | sort -k2,2 -k3,3n > "gdp.tsv"
     #Comparing the header of the file with Life columns
     elif [[ "$header" == $'Entity\tCode\tYear\tLife expectancy - Sex: all - Age: at birth - Variant: estimates\tCantril ladder score\tPopulation (historical estimates)\tContinent' ]];
     then 
-        remove_continent_column < "$file" | filter_rows | sort -k2,2 -k3,3n > "life.tsv"
+        remove_continent_column "$file" | filter_rows | sort -k2,2 -k3,3n > "life.tsv"
     fi
 done
 

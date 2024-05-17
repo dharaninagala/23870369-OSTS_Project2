@@ -3,11 +3,23 @@
 
 #!/usr/bin/env bash
 
-#Check if three files are provided as input
+#Check if three files are provided as input 
 if [ "$#" -ne 3 ]; then
    echo "Usage: $0 <file1.tsv> <file2.tsv> <file3.tsv>"
-   exit 1
+    exit 1
 fi
+
+
+#Function to check whether database file is empty or does not contain any data.
+check_file_existence_and_nonempty() 
+{
+    local file="$1"
+    # Check if the file exists and is not empty
+    if [ ! -s "$file" ]; then
+        echo "The named input file $file does not exist or has zero length"
+        exit 1
+    fi
+}
 
 #Function to check whether given file is a tsv file or not
 check_tsv_file()
@@ -25,7 +37,7 @@ check_tsv_file()
 
     if [ $? -ne 0 ]; 
     then
-        echo "The input file $file is not a tsv file";
+        echo "The named input file $file is not a tsv file";
         exit 1;
     fi
 }
@@ -34,18 +46,27 @@ check_tsv_file()
 remove_continent_column() 
 {
     local file="$1"
-    awk 'BEGIN { FS = "\t"; OFS = "\t" } { NF--; print }' "$file";
+    local output_file="$2"
+    awk 'BEGIN { FS = "\t"; OFS = "\t" } { NF--; print }' "$file" > "$output_file"
 }
 
 # Function to filter rows based on year and country code
-filter_rows() {
+filter_rows() 
+{
+    local file="$1"
+    local output_file="$2"
     local min_year=2011
     local max_year=2021
-    awk -v min="$min_year" -v max="$max_year" -F "\t" '$3 >= min && $3 <= max && $2 != ""';
+    awk -v min="$min_year" -v max="$max_year" -F "\t" '$3 >= min && $3 <= max && $2 != ""' "$file" > "$output_file"
+    if [ ! -s "$output_file" ]; then
+        rm "$output_file"  
+        return 1  
+    fi
+    return 0  
 }
- 
 
-# Function remove_inconsistent_lines() is used to ignore the rows that doesn't match with header count
+
+#Function to ignore inconsistent lines present in a row and do further processing
 remove_inconsistent_lines() {
     local file="$1"
     local clean_file="clean_$file"
@@ -53,9 +74,9 @@ remove_inconsistent_lines() {
 
     # Read the number of fields expected from the header
     local num_fields=$(head -n 1 "$file" | awk -F '\t' '{print NF}')
-    # Check each subsequent line to ensure it has the correct number of fields
-    # Report errors to stderr and do not print lines with incorrect field count
+
     awk -F '\t' -v num_fields="$num_fields" 'NR > 1 {
+        # Report errors to stderr if row contains with incorrect field count with header
         if (NF != num_fields)
         {
             print "Error: Line " NR " in file '"$file"' has a different number of cells than the header" > "/dev/null"
@@ -65,45 +86,66 @@ remove_inconsistent_lines() {
             print $0 >> "'"$clean_file"'" 
         }
     }' "$file"
-    if [ -s "$clean_file" ]; then  # Check if clean file has size greater than zero
+    # Check if clean file has size greater than zero
+    if [ -s "$clean_file" ]; then  
         mv "$clean_file" "$file"
     fi
 }
 
+for file in "$@"; do
 
-# Iterating over the files passed in the command line
-for file in "$@"; 
-do
-    check_tsv_file "$file";
-    remove_inconsistent_lines "$file";
-    #Storing the header of each file in a variable
+    check_file_existence_and_nonempty "$file"
+    check_tsv_file "$file"
+    remove_inconsistent_lines "$file"
+
     header=$(head -n 1 "$file")
-    #Comparing the header of the file with Homicide columns
-    if [[ "$header" == $'Entity\tCode\tYear\t'*'Homicide rate per 100,000 population - Both sexes - All ages'* ]]; 
-    then
-        filter_rows < "$file" | sort -k2,2 -k3,3n > "homicide.tsv"
-    
-    #Comparing the header of the file with GDP columns
-    elif [[ "$header" == $'Entity\tCode\tYear\tCantril ladder score\t\"GDP per capita, PPP (constant 2017 international $)\"\tPopulation (historical estimates)\tContinent' ]]; 
-    then
-        remove_continent_column "$file" | filter_rows | sort -k2,2 -k3,3n > "gdp.tsv"
-    #Comparing the header of the file with Life columns
-    elif [[ "$header" == $'Entity\tCode\tYear\tLife expectancy - Sex: all - Age: at birth - Variant: estimates\tCantril ladder score\tPopulation (historical estimates)\tContinent' ]];
-    then 
-        remove_continent_column "$file" | filter_rows | sort -k2,2 -k3,3n > "life.tsv"
-    fi
+    if [[ "$header" == $'Entity\tCode\tYear\t'*'Homicide'* ]]; then
+        if filter_rows "$file" "homicide.tsv";
+        then
+            sort -k2,2 -k3,3n "homicide.tsv" > "sorted_homicide.tsv"
+            mv "sorted_homicide.tsv" "homicide.tsv";
+        else
+            echo "The input file $file does not contain data with valid criteria(Data with country code or with year in range of 2011 and 2021)";
+            exit 1;
+        fi
+    elif [[ "$header" == $'Entity\tCode\tYear\tCantril ladder score\t'*'GDP'*'Population'*'Continent' ]]; then
+        remove_continent_column "$file" "temp_gdp.tsv"
+        if filter_rows "temp_gdp.tsv" "gdp.tsv"; then
+            sort -k2,2 -k3,3n "gdp.tsv" > "sorted_gdp.tsv"
+            mv "sorted_gdp.tsv" "gdp.tsv"
+            rm "temp_gdp.tsv";
+        else
+            echo "The input file $file does not contain data with valid criteria(Data with country code or with year in range of 2011 and 2021)";
+            rm "temp_gdp.tsv"
+            exit 1;
+        fi
+    elif [[ "$header" == $'Entity\tCode\tYear\t'*'Life expectancy'*'Cantril ladder score'*'Population'*'Continent' ]]; then
+        remove_continent_column "$file" "temp_life.tsv"
+        if filter_rows "temp_life.tsv" "life.tsv"; then
+            sort -k2,2 -k3,3n "life.tsv" > "sorted_life.tsv"
+            mv "sorted_life.tsv" "life.tsv"
+            rm "temp_life.tsv"
+        else
+            echo "The input file $file does not contain data with valid criteria(Data with country code or with year in range of 2011 and 2021)";
+            rm "temp_life.tsv";
+            exit 1;
+        fi
+    else
+        echo "The $file does not contain valid headers or not matching with valid header pattern(headers should be seperated with tab delimiter)";
+        exit 1;
+    fi;
 done
 
 # Output file
-output_file="merged_file.tsv"
+output_file="merged_final.tsv"
 
 #Storing header columns in the output file
 echo $'Entity/Country\tCode\tYear\tGDP per capita\tPopulation\tHomicide Rate\tLife Expectancy\tCantril Ladder score' > $output_file
 
 # Remove extra spaces, ensure Unix line endings, and prepare files by concatenating key fields and sorting
-awk -F'\t' -v OFS='\t' '{gsub(/\r/, ""); print $2 "-" $3, $0}' "homicide.tsv" | sort -k1,1 > temp_homicide.tsv
-awk -F'\t' -v OFS='\t' '{gsub(/\r/, ""); print $2 "-" $3, $0}' "gdp.tsv" | sort -k1,1 > temp_gdp.tsv
-awk -F'\t' -v OFS='\t' '{gsub(/\r/, ""); print $2 "-" $3, $0}' "life.tsv" | sort -k1,1 > temp_life.tsv 
+awk -F'\t' -v OFS='\t' '{$1=$1; gsub(/\r/, ""); print $2 "-" $3, $0}' "homicide.tsv" | sort -k1,1 > temp_homicide.tsv
+awk -F'\t' -v OFS='\t' '{$1=$1; gsub(/\r/, ""); print $2 "-" $3, $0}' "gdp.tsv" | sort -k1,1 > temp_gdp.tsv
+awk -F'\t' -v OFS='\t' '{$1=$1; gsub(/\r/, ""); print $2 "-" $3, $0}' "life.tsv" | sort -k1,1 > temp_life.tsv 
 
 
 # Perform the first join on the key between  cleaned Homicide and GDP  files
@@ -112,4 +154,4 @@ join -t $'\t' -j 1 -o '0,1.2,1.3,1.4,1.5,2.5,2.6,2.7' temp_homicide.tsv temp_gdp
 join -t $'\t' -j 1 -o '1.2,1.3,1.4,1.7,1.8,1.5,2.5,1.6' temp_join1.tsv temp_life.tsv >> $output_file
 
 #Removing the temporary files created throught out the program
-rm temp_homicide.tsv temp_gdp.tsv temp_join1.tsv temp_life.tsv homicide.tsv gdp.tsv life.tsv;
+rm temp_homicide.tsv temp_gdp.tsv temp_join1.tsv temp_life.tsv gdp.tsv life.tsv homicide.tsv;

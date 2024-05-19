@@ -43,11 +43,22 @@ NR>1 {
     process_data(country, cantril, $7, "Life_Expectancy");
 }
 END {
+    # Variables to track the most predictive variable
+    max_corr = 0;
+    max_type = "";
+    max_original_corr = 0;
     # Output mean correlations, ensuring at least 3 entries per country for each variable
     output_mean_correlation("Homicide");
     output_mean_correlation("GDP");
     output_mean_correlation("Population");
     output_mean_correlation("Life_Expectancy");
+
+     # Output the most predictive mean correlation
+    if (max_type != "") {
+        printf "\n";
+        printf "Most predictive mean correlation with the Cantril ladder is %s (r = %.3f)\n", max_type, max_original_corr;
+    }
+
 }
 
 function process_data(country, cantril, value, type)
@@ -94,6 +105,13 @@ function output_mean_correlation(type)
         {
             printf "Mean correlation of %s with Cantril ladder is %.3f\n", type, mean_corr;
         }
+        abs_corr = abs(mean_corr);  # Calculate absolute value using the modified abs function
+        if (abs_corr > max_corr) 
+        {
+            max_corr = abs_corr;
+            max_type = type;
+            max_original_corr = mean_corr;
+        }
     } 
     else 
     {
@@ -112,7 +130,18 @@ function calculate_correlation(x_sum, y_sum, xy_sum, x2_sum, y2_sum, n)
         return 0; 
     }
     return numerator/denominator;
-}' "$file"
+}
+
+
+#abs function
+function abs(x) 
+{
+    if (x < 0)
+        return -x;
+    else
+        return x;
+}
+' "$file"
 
 
 

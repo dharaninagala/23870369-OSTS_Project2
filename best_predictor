@@ -1,7 +1,21 @@
-#!/bin/bash
+#Author: Dharani Kumari Nagali
+#Student Id: 23870369
+
+#!/usr/bin/env bash
 
 file="$1"  
 
+#Check if file is provided as input 
+if [ "$#" -ne 1 ]; then
+    echo "Usage: $0 <tsv data file>" > "/dev/stderr"
+    exit 1
+fi
+
+#To check whether database file is empty or does not contain any data.
+if [ ! -s "$file" ]; then
+    echo "The named input file $file does not exist or has zero length" > "/dev/stderr"
+    exit 1
+fi
 
 # using awk to check whether the file is tab seprated or not 
 awk -F'\t' 'NR==1 {
@@ -16,7 +30,7 @@ awk -F'\t' 'NR==1 {
 
 if [ $? -ne 0 ]; 
 then
-    echo "The input file $1 is not a tsv file";
+    echo "The input file $1 is not a tsv file" > "/dev/stderr"
     exit 1;
 fi
 
@@ -26,7 +40,8 @@ fi
 awk -F'\t' '
 BEGIN { OFS="\t" }
 NR>1 {
-    #Clean numbers: remove non-numeric characters except for decimal point and minus
+
+    #To remove any non-numeric characters except for number,decimal point and minus
     gsub(/[^0-9.-]/, "", $4);  # GDP
     gsub(/[^0-9.-]/, "", $5);  # Population
     gsub(/[^0-9.-]/, "", $6);  # Homicide Rate
@@ -36,22 +51,21 @@ NR>1 {
     country = $1;
     cantril = $8;
 
-    # Process each variable if present with Cantril
     process_data(country, cantril, $4, "GDP");
     process_data(country, cantril, $5, "Population");
-    process_data(country, cantril, $6, "Homicide");
-    process_data(country, cantril, $7, "Life_Expectancy");
+    process_data(country, cantril, $6, "Homicide Rate");
+    process_data(country, cantril, $7, "Life Expectancy");
 }
 END {
     # Variables to track the most predictive variable
     max_corr = 0;
     max_type = "";
     max_original_corr = 0;
-    # Output mean correlations, ensuring at least 3 entries per country for each variable
-    output_mean_correlation("Homicide");
+    
+    output_mean_correlation("Homicide Rate");
     output_mean_correlation("GDP");
     output_mean_correlation("Population");
-    output_mean_correlation("Life_Expectancy");
+    output_mean_correlation("Life Expectancy");
 
      # Output the most predictive mean correlation
     if (max_type != "") {
@@ -61,6 +75,7 @@ END {
 
 }
 
+#function process_data is used to store all the values required to calculate correlation between predictor and cantril
 function process_data(country, cantril, value, type)
 {
     if (cantril != "" && value != "") 
@@ -76,6 +91,7 @@ function process_data(country, cantril, value, type)
     
 }
 
+#function output_mean_correlation is used to calculate mean correlation of all countries for each predictor
 function output_mean_correlation(type) 
 {
     total_corr = num_countries = 0;
@@ -93,19 +109,19 @@ function output_mean_correlation(type)
             num_countries++;
         }
     }
-    # Output the mean correlation formatted to three decimal places
     if (num_countries > 0) 
     {
         mean_corr = total_corr / num_countries;
         if (mean_corr == 0)
         {
-            printf "Correlation of %s with Cantril ladder is undefined or zero due to lack of data variance.\n", type;
+            printf "Correlation of %s with Cantril ladder has no linear relationship or is undefined or zero due to lack of data variance\n", type;
         }
+        #mean correlation is formatted to three decimal places
         else
         {
             printf "Mean correlation of %s with Cantril ladder is %.3f\n", type, mean_corr;
         }
-        abs_corr = abs(mean_corr);  # Calculate absolute value using the modified abs function
+        abs_corr = abs(mean_corr);  
         if (abs_corr > max_corr) 
         {
             max_corr = abs_corr;
@@ -115,12 +131,12 @@ function output_mean_correlation(type)
     } 
     else 
     {
-        printf "Mean correlation of %s with Cantril ladder is not available due to insufficient data\n", type;
+        printf "Mean correlation of %s with Cantril ladder is not available due to insufficient or invalid data\n", type;
     }
 }
 
 
-# calculate_correlation function is used to calculate correlation between 2 values
+# Function calculate_correlation is used to calculate correlation between pair of values
 function calculate_correlation(x_sum, y_sum, xy_sum, x2_sum, y2_sum, n) 
 {
     numerator = ((n * xy_sum)- (x_sum * y_sum));
@@ -133,7 +149,7 @@ function calculate_correlation(x_sum, y_sum, xy_sum, x2_sum, y2_sum, n)
 }
 
 
-#abs function
+# Function abs is to calculate the absolute value of a number 
 function abs(x) 
 {
     if (x < 0)
